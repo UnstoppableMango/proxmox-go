@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/sp-yduck/proxmox-go/api"
-	"github.com/sp-yduck/proxmox-go/rest"
+	"github.com/k8s-proxmox/proxmox-go/api"
+	"github.com/k8s-proxmox/proxmox-go/rest"
 )
 
 type Storage struct {
+	service    *Service
 	restclient *rest.RESTClient
 	Storage    *api.Storage
 	Node       string
@@ -20,7 +21,7 @@ func (s *Service) Storage(ctx context.Context, name string) (*Storage, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Storage{restclient: s.restclient, Storage: storage}, nil
+	return &Storage{service: s, restclient: s.restclient, Storage: storage}, nil
 }
 
 func (s *Service) CreateStorage(ctx context.Context, name, storageType string, options api.StorageCreateOptions) (*Storage, error) {
@@ -30,11 +31,23 @@ func (s *Service) CreateStorage(ctx context.Context, name, storageType string, o
 	if err := s.restclient.Post(ctx, "/storage", options, &storage); err != nil {
 		return nil, err
 	}
-	return &Storage{restclient: s.restclient, Storage: storage}, nil
+	return &Storage{service: s, restclient: s.restclient, Storage: storage}, nil
 }
 
 func (s *Storage) Delete(ctx context.Context) error {
 	return s.restclient.DeleteStorage(ctx, s.Storage.Storage)
+}
+
+func (s *Storage) GetStatus(ctx context.Context) ([]*api.Storage, error) {
+	var status []*api.Storage
+	if s.Node == "" {
+		return nil, errors.New("Node must not be empty")
+	}
+	path := fmt.Sprintf("/nodes/%s/storage/%s/status", s.Node, s.Storage.Storage)
+	if err := s.restclient.Get(ctx, path, &status); err != nil {
+		return nil, err
+	}
+	return status, nil
 }
 
 func (s *Storage) GetContents(ctx context.Context) ([]*api.StorageContent, error) {
@@ -79,4 +92,12 @@ func (s *Storage) DeleteVolume(ctx context.Context, volumeID string) error {
 		return err
 	}
 	return nil
+}
+
+func (s *Storage) DownloadFromURL(ctx context.Context, opts api.ContentDownloadOption) error {
+	taskid, err := s.restclient.DownloadFromURL(ctx, s.Node, s.Storage.Storage, opts)
+	if err != nil {
+		return err
+	}
+	return s.service.EnsureTaskDone(ctx, s.Node, *taskid)
 }

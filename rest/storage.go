@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/sp-yduck/proxmox-go/api"
+	"github.com/k8s-proxmox/proxmox-go/api"
 )
 
 func (c *RESTClient) GetStorages(ctx context.Context) ([]*api.Storage, error) {
@@ -44,4 +44,13 @@ func (c *RESTClient) DeleteStorage(ctx context.Context, name string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *RESTClient) DownloadFromURL(ctx context.Context, node, storage string, option api.ContentDownloadOption) (*string, error) {
+	path := fmt.Sprintf("/nodes/%s/storage/%s/download-url", node, storage)
+	var upid *string
+	if err := c.Post(ctx, path, option, &upid); err != nil {
+		return nil, err
+	}
+	return upid, nil
 }

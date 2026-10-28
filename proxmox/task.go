@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/sp-yduck/proxmox-go/api"
-	"github.com/sp-yduck/proxmox-go/rest"
+	"github.com/k8s-proxmox/proxmox-go/api"
+	"github.com/k8s-proxmox/proxmox-go/rest"
 )
 
 const (
@@ -14,7 +14,7 @@ const (
 )
 
 func (s *Service) MustGetTask(ctx context.Context, node string, upid string) (*api.Task, error) {
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 60; i++ {
 		task, err := s.restclient.GetTask(ctx, node, upid)
 		if err != nil {
 			if rest.IsNotFound(err) {

@@ -7,8 +7,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/sp-yduck/proxmox-go/api"
-	"github.com/sp-yduck/proxmox-go/rest"
+	"github.com/k8s-proxmox/proxmox-go/api"
+	"github.com/k8s-proxmox/proxmox-go/rest"
 )
 
 type VirtualMachine struct {
@@ -25,7 +25,7 @@ const (
 
 // VirtualMachines returns all qemus across all proxmox nodes
 func (s *Service) VirtualMachines(ctx context.Context) ([]*api.VirtualMachine, error) {
-	nodes, err := s.Nodes(ctx)
+	nodes, err := s.GetNodes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (s *Service) VirtualMachines(ctx context.Context) ([]*api.VirtualMachine, e
 }
 
 func (s *Service) VirtualMachine(ctx context.Context, vmid int) (*VirtualMachine, error) {
-	nodes, err := s.Nodes(ctx)
+	nodes, err := s.GetNodes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -69,10 +69,21 @@ func (s *Service) CreateVirtualMachine(ctx context.Context, node string, vmid in
 	return s.VirtualMachine(ctx, vmid)
 }
 
+func (s *Service) CloneVirtualMachine(ctx context.Context, node string, vmid int, newid int, option api.VirtualMachineCloneOption) (*VirtualMachine, error) {
+	taskid, err := s.restclient.CreateVirtualMachineClone(ctx, node, vmid, newid, option)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.EnsureTaskDone(ctx, node, *taskid); err != nil {
+		return nil, err
+	}
+	return s.VirtualMachine(ctx, newid)
+}
+
 // VirtualMachineFromUUID attempts to find virtual machine based on SMBIOS UUID. It will ignore any error that prevents
 // it from inspecting additional virtual machines (e.g. offline node, vm config not accessible, malformed uuids)
 func (s *Service) VirtualMachineFromUUID(ctx context.Context, uuid string) (*VirtualMachine, error) {
-	nodes, err := s.Nodes(ctx)
+	nodes, err := s.GetNodes(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -98,6 +109,26 @@ func (s *Service) VirtualMachineFromUUID(ctx context.Context, uuid string) (*Vir
 	return nil, rest.NotFoundErr
 }
 
+// return true if there is any vm having specified name
+func (s *Service) VirtualMachineExistsWithName(ctx context.Context, name string) (bool, error) {
+	nodes, err := s.GetNodes(ctx)
+	if err != nil {
+		return false, err
+	}
+	for _, node := range nodes {
+		vms, err := s.restclient.GetVirtualMachines(ctx, node.Node)
+		if err != nil {
+			continue
+		}
+		for _, vm := range vms {
+			if vm.Name == name {
+				return true, nil
+			}
+		}
+	}
+	return false, nil
+}
+
 func ConvertSMBiosToUUID(smbios string) (string, error) {
 	re := regexp.MustCompile(fmt.Sprintf("uuid=%s", UUIDFormat))
 	match := re.FindString(smbios)
@@ -106,6 +137,17 @@ func ConvertSMBiosToUUID(smbios string) (string, error) {
 	}
 	// match: uuid=<uuid>
 	return strings.Split(match, "=")[1], nil
+}
+
+func (c *VirtualMachine) Clone(ctx context.Context, newid int, option api.VirtualMachineCloneOption) (*VirtualMachine, error) {
+	taskid, err := c.restclient.CreateVirtualMachineClone(ctx, c.Node, c.VM.VMID, newid, option)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.service.EnsureTaskDone(ctx, c.Node, *taskid); err != nil {
+		return nil, err
+	}
+	return c.service.VirtualMachine(ctx, newid)
 }
 
 func (c *VirtualMachine) Delete(ctx context.Context) error {
@@ -127,6 +169,15 @@ func (c *VirtualMachine) GetConfig(ctx context.Context) (*api.VirtualMachineConf
 	}
 	c.config = config
 	return c.config, err
+}
+
+// Set virtual machine options (asynchrounous API).
+func (c *VirtualMachine) SetConfigAsync(ctx context.Context, config api.VirtualMachineConfig) error {
+	taskid, err := c.restclient.SetVirtualMachineConfigAsync(ctx, c.Node, c.VM.VMID, config)
+	if err != nil {
+		return err
+	}
+	return c.service.EnsureTaskDone(ctx, c.Node, *taskid)
 }
 
 func (c *VirtualMachine) GetOSInfo(ctx context.Context) (*api.OSInfo, error) {

@@ -2,7 +2,27 @@ package api
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 )
+
+type StringOrInt int
+
+func (d *StringOrInt) UnmarshalJSON(b []byte) error {
+	str := strings.Replace(string(b), "\"", "", -1)
+	if str == "" {
+		*d = StringOrInt(0)
+		return nil
+	}
+
+	parsed, err := strconv.ParseInt(str, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	*d = StringOrInt(parsed)
+	return nil
+}
 
 type VirtualMachine struct {
 	Cpu       float32       `json:",omitempty"`
@@ -33,6 +53,7 @@ const (
 type Arch string
 type OSType string
 type ScsiHw string
+type StorageFormat string
 
 const (
 	X86_64  Arch = "x86_64"
@@ -64,6 +85,12 @@ const (
 	VirtioScsiSingle = "virtio-scsi-single"
 	Megasas          = "megasas"
 	Pvscsi           = "pvscsi"
+)
+
+const (
+	Raw   StorageFormat = "raw"
+	Qcow2 StorageFormat = "qcow2"
+	Vmdk  StorageFormat = "vmdk"
 )
 
 type Ide struct {
@@ -479,17 +506,17 @@ type VirtualMachineConfig struct {
 	// Use STORAGE_ID:0 and the 'import-from' parameter to import from an existing volume.
 	Ide           `json:",inline"`
 	IPConfig      `json:",inline"`
-	IvshMem       string `json:"ivshmem,omitempty"`
+	IVshMem       string `json:"ivshmem,omitempty"`
 	KeepHugePages int8   `json:"keephugepages,omitempty"`
 	Keyboard      string `json:"keyboard,omitempty"`
 	// enable/disable KVM hardware virtualization
-	Kvm       int8   `json:"kvm,omitempty"`
+	KVM       int8   `json:"kvm,omitempty"`
 	LocalTime int8   `json:"localtime,omitempty"`
 	Lock      string `json:"lock,omitempty"`
 	// specifies the QEMU machine type
 	Machine string `json:"machine,omitempty"`
 	// amount of RAM for the VM in MiB : 16 ~
-	Memory          int         `json:"memory,omitempty"`
+	Memory          StringOrInt `json:"memory,omitempty"`
 	MigrateDowntime json.Number `json:"migrate_downtime,omitempty"`
 	MigrateSpeed    int         `json:"migrate_speed,omitempty"`
 	// name for VM. Only used on the configuration web interface
@@ -498,7 +525,8 @@ type VirtualMachineConfig struct {
 	NameServer string `json:"nameserver,omitempty"`
 	// network device
 	Net   `json:",inline"`
-	Numa  int8 `json:"numa,omitempty"`
+	Node  string `json:"-"`
+	Numa  int8   `json:"numa,omitempty"`
 	NumaS `json:",inline"`
 	// specifies whether a VM will be started during system bootup
 	OnBoot int8 `json:"onboot,omitempty"`
@@ -580,4 +608,31 @@ type VirtualMachineStopOption struct {
 	MigratedFrom string `json:"migratedfrom,omitempty"`
 	SkipLock     int8   `json:"skiplock,omitempty"`
 	TimeOut      int    `json:"timeout,omitempty"`
+}
+
+type VirtualMachineCloneOption struct {
+	// VMID for the clone.
+	NewID int `json:"newid"`
+	// The cluster node name.
+	Node string `json:"node"`
+	// The (unique) ID of the VM.
+	VMID int `json:"vmid"`
+	// Override I/O bandwidth limit (in KiB/s).
+	BWLimit int `json:"bwlimit,omitempty"`
+	// Description for the new VM.
+	Description string `json:"description,omitempty"`
+	// Target format for file storage. Only valid for full clone.
+	Format StorageFormat `json:"format,omitempty"`
+	// Create a full copy of all disks. This is always done when you clone a normal VM. For VM templates, we try to create a linked clone by default.
+	Full int8 `json:"full,omitempty"`
+	// Set a name for the new VM.
+	Name string `json:"name,omitempty"`
+	// Add the new VM to the specified pool.
+	Pool string `json:"pool,omitempty"`
+	// The name of the snapshot.
+	SnapName string `json:"snapname,omitempty"`
+	// Target storage for full clone.
+	Storage string `json:"storage,omitempty"`
+	// 	Target node. Only allowed if the original VM is on shared storage.
+	Target string `json:"target,omitempty"`
 }
