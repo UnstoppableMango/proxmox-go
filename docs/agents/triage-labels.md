@@ -13,3 +13,13 @@ The skills speak in terms of five canonical triage roles. This file maps those r
 When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
 
 Edit the right-hand column to match whatever vocabulary you actually use.
+
+The labels must exist in the tracker before a skill can apply them. Create any that are missing (if you edited the right-hand column, put those names in the loop). Existing labels are left alone, and any other `gh` error is printed:
+
+```sh
+if existing=$(gh label list --limit 1000 --json name --jq '.[].name'); then
+  for l in needs-triage needs-info ready-for-agent ready-for-human wontfix; do
+    printf '%s\n' "$existing" | grep -qxF "$l" || gh label create "$l"
+  done
+fi
+```
